@@ -1,5 +1,6 @@
 from datetime import datetime
 from dateutil.rrule import rrule, DAILY, HOURLY, MONTHLY
+
 import json
 
 class Query():
@@ -11,6 +12,40 @@ class Query():
         self.from_dt = from_dt
         self.to_dt = to_dt
         self.group_type = group_type
+
+def add_missed_values(query: Query, aggregation_result):
+    PARSE_CONVERSION = {
+        "month": MONTHLY,
+        "day": DAILY,
+        "hour": HOURLY,
+    }
+
+    dates = rrule(
+        PARSE_CONVERSION[query.group_type],
+        dtstart=query.from_dt, 
+        until=query.to_dt
+    )
+
+    dataset_labels_pairs = list(zip(
+        aggregation_result[0]["labels"],
+        aggregation_result[0]["dataset"]
+    ))
+    
+    for date in dates:
+        if date not in aggregation_result[0]["labels"]:  
+            dataset_labels_pairs.append((date, 0))
+
+    dataset_labels_pairs = sorted(
+        dataset_labels_pairs,
+        key=lambda o: o[0]
+    )
+
+    result = {
+        "dataset": [o[1] for o in dataset_labels_pairs],
+        "labels":  [o[0] for o in dataset_labels_pairs]
+    }
+
+    return result
 
 def aggregate_salaries(query: Query, mongo_collection):
     GROUPTYPES = {
@@ -47,7 +82,7 @@ def aggregate_salaries(query: Query, mongo_collection):
            }
          },
 
-         {"$sort": {"date": 1}},
+         {"$sort": {"date": 1}}, # sort records by dates
 
          {"$group": {   # group by final sets 
              "_id": "null",
@@ -65,36 +100,8 @@ def aggregate_salaries(query: Query, mongo_collection):
     ]
 
     aggregation_result = list(mongo_collection.aggregate(pipeline)) 
-    
-    PARSE_CONVERSION = {
-        "month": MONTHLY,
-        "day": DAILY,
-        "hour": HOURLY,
-    }
 
-    dates = rrule(
-        PARSE_CONVERSION[query.group_type],
-        dtstart=query.from_dt, 
-        until=query.to_dt
-    )
-
-    dataset_labels_pairs = list(zip(
-        aggregation_result[0]["labels"],
-        aggregation_result[0]["dataset"]
-    ))
-    
-    for date in dates:
-        if date not in aggregation_result[0]["labels"]:  
-            dataset_labels_pairs.append((date, 0))
-
-    dataset_labels_pairs = sorted(dataset_labels_pairs, key=lambda o: o[0])
-
-    result = {
-        "dataset": [o[1] for o in dataset_labels_pairs],
-        "labels": [o[0] for o in dataset_labels_pairs]
-    }
-
-    return result
+    return add_missed_values(query, aggregation_result)
 
 def query_from_json_string(input: str) -> Query:
     parsed = json.loads(input)

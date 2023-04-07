@@ -23,7 +23,7 @@ async def on_start_message(message):
 async def on_message(message):
     try:
         input = message.text
-    except ValueError | KeyError:
+    except ValueError | KeyError: # it's not json or not valid model
         await message.answer("Пожалуйста, дайте мне валидный json")
         return
 
